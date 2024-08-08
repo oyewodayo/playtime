@@ -6,7 +6,7 @@ import caption from '../assets/caption.svg';
 import { IoArrowBack, IoPause, IoPlay } from 'react-icons/io5';
 import { IoIosArrowBack, IoIosArrowForward } from 'react-icons/io';
 import { FaClosedCaptioning, FaTheaterMasks } from 'react-icons/fa';
-import { BsFullscreen, BsFullscreenExit } from 'react-icons/bs';
+import { BsDot, BsFullscreen, BsFullscreenExit } from 'react-icons/bs';
 import { MdTheaters } from 'react-icons/md';
 import { TbArrowBackUpDouble, TbArrowForwardUpDouble } from 'react-icons/tb';
 import { RxDoubleArrowLeft, RxDoubleArrowRight } from 'react-icons/rx';
@@ -200,6 +200,20 @@ const VideoPlayer = () => {
   }
 
 
+//   video.addEventListener("loadeddata",(e)=>{
+//     totalTimeElement.textContent = formatDuration(video.duration)
+// })
+
+// video.addEventListener("timeupdate",()=>{
+//     currentTimeElement.textContent = formatDuration(video.currentTime)
+//    const percent  = video.currentTime/video.duration;
+//     timelineContainer.style.setProperty("--progress-position",percent);
+
+// })
+
+const leadingZeroFormatter = new Intl.NumberFormat(undefined, {minimumIntegerDigits:2})
+
+
 
   const handleForwardSkip = (e:React.MouseEvent<HTMLButtonElement>)=>{
 
@@ -212,8 +226,8 @@ const VideoPlayer = () => {
     setShowSkipTime(false);
   }
 
+  
   const selectSkipTiming = (value:number)=>{
-
     setCurrentSkipTime(Number(value))
     setShowSkipTime(false);
   }
@@ -377,22 +391,22 @@ const VideoPlayer = () => {
                            <div className="origin-bottom-right absolute bottom-full w-[120px] rounded-md shadow-lg bg-white text-gray-700 ring-1 ring-black ring-opacity-5">
                            <div className="py-1  w-[100%]">
                              <button
-                               className="w-[100%] px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left"
+                               className="flex place-items-center w-[100%] px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left"
                              onClick={()=>selectSkipTiming(5)}
                              >
-                               5 sec
+                              <BsDot className='text-green-500 -my-1 text-3xl'/> 5 sec
                              </button>
                              <button
-                               className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left"
+                               className="flex place-items-center block px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left"
                                onClick={()=>selectSkipTiming(10)}
                              >
-                               10 sec
+                               <BsDot className='text-green-500 -my-1 text-3xl'/> 10 sec
                              </button>
                              <button
-                               className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left"
+                               className="flex place-items-centerblock px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left"
                                onClick={()=>selectSkipTiming(15)}
                              >
-                               15 sec
+                               <BsDot className='text-green-500 -my-1 text-3xl'/> 15 sec
                              </button>
                            </div>
                          </div>
