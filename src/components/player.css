@@ -8,17 +8,8 @@ body{
 }
 .video-container{
     position: relative;
-    width: 80%;
-    /* height: 100vh; */
-    display: flex;
-    justify-content: center;
-    margin-inline: auto;
-    background-color: black;
 }
-.directory{
-    position: relative;
-    width: 20%; 
-}
+
 
 .select-files{
     display: grid;
@@ -43,7 +34,7 @@ body{
     max-height: 90vh;
 }
 .video-container.video-container.fullscreen{
-    max-height: 100vh;
+    /* max-height: 100vh; */
 }
 
 video{

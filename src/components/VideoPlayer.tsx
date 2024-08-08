@@ -8,6 +8,8 @@ import { IoIosArrowBack, IoIosArrowForward } from 'react-icons/io';
 import { FaClosedCaptioning, FaTheaterMasks } from 'react-icons/fa';
 import { BsFullscreen, BsFullscreenExit } from 'react-icons/bs';
 import { MdTheaters } from 'react-icons/md';
+import { TbArrowBackUpDouble, TbArrowForwardUpDouble } from 'react-icons/tb';
+import { RxDoubleArrowLeft, RxDoubleArrowRight } from 'react-icons/rx';
 
 interface VideoProps {
   src: string;
@@ -20,17 +22,21 @@ interface CustomInputProps extends React.HTMLAttributes<HTMLInputElement> {
   }
 
 const VideoPlayer = () => {
-  const [currentTime, setCurrentTime] = useState(0);
+  const [currentTime, setCurrentTime] = useState<number>(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
-  const timelineContainer = useRef(null);
-  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const timelineContainer = useRef<HTMLDivElement>(null);
+  const [isPaused, setIsPaused] = useState<boolean>(true);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [volumeLevel, setVolumeLevel] = useState('high');
-  const [captionsVisible, setCaptionsVisible] = useState(false);
+  const [volumeLevel, setVolumeLevel] = useState<string>('high');
+  const [captionsVisible, setCaptionsVisible] = useState<boolean>(false);
+  const [currentColor, setCurrentColor] = useState("#ffffff");
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isTheatherMode, setIsTheatherMode] = useState(true);
+  
   const videoExtensions = ['.mp4', '.avi', '.mkv', '.mov', '.wmv'];
   const audioExtensions = ['.mp3', '.wav', '.aac', '.flac', '.ogg'];
-  const [currentColor, setCurrentColor] = useState("#ffffff");
+
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -42,6 +48,7 @@ const VideoPlayer = () => {
         const ext = file.name.split('.').pop()?.toLowerCase();
         if (ext && (videoExtensions.includes(`.${ext}`) || audioExtensions.includes(`.${ext}`))) {
           const li = document.createElement('li');
+          li.classList.add("cursor-pointer","hover:text-blue-500")
           li.style.listStyleType = "number";
           li.textContent = file.webkitRelativePath || file.name;
           li.dataset.fileUrl = URL.createObjectURL(file);
@@ -63,6 +70,7 @@ const VideoPlayer = () => {
         const ext = file.name.split('.').pop()?.toLowerCase();
         if (ext && (videoExtensions.includes(`.${ext}`) || audioExtensions.includes(`.${ext}`))) {
           const li = document.createElement('li');
+          li.classList.add("cursor-pointer","hover:text-blue-500")
           li.style.listStyleType = "number";
           li.textContent = file.webkitRelativePath || file.name;
           li.dataset.fileUrl = URL.createObjectURL(file);
@@ -118,16 +126,17 @@ const VideoPlayer = () => {
   };
 
   const toggleTheaterMode = () => {
-    if (videoContainerRef.current) {
-        videoContainerRef.current.classList.toggle('theater');
-      }
+   setIsTheatherMode(!isTheatherMode);
+   
   };
 
   const toggleFullScreenMode = () => {
     if (document.fullscreenElement == null) {
       videoContainerRef.current?.requestFullscreen();
+      setIsFullscreen(true)
     } else {
-      document.exitFullscreen();
+        document.exitFullscreen();
+        setIsFullscreen(false)
     }
   };
 
@@ -155,6 +164,7 @@ const VideoPlayer = () => {
 
   useEffect(() => {
     const videoPlayer = videoRef.current;
+   
     if (videoPlayer) {
       videoPlayer.addEventListener('play', () => setIsPaused(false));
       videoPlayer.addEventListener('pause', () => setIsPaused(true));
@@ -200,7 +210,7 @@ const VideoPlayer = () => {
  );
 
   const TheatherMiniIcon = () => (
-    <svg className="wide" viewBox="0 0 40 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg className="" viewBox="0 0 40 20" fill="none" xmlns="http://www.w3.org/2000/svg">
     <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
     <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g>
     <g id="SVGRepo_iconCarrier"> 
@@ -249,94 +259,109 @@ const VideoPlayer = () => {
 
 
   return (
-    <div className="flex flex-row w-[100%] h-[80%] justify-start align-top place-content-start">
-        <div className="video-container paused captions" ref={videoContainerRef} data-volume-level="high">
+    <div className={`${isTheatherMode?'':'flex flex-row'} w-[100%]  h-[80%] justify-start align-top place-content-start`}>
+        <div className={` ${isTheatherMode?'w-[100%]':'w-[75%]'} video-container paused captions bg-black rounded`} onClick={togglePauseAndPlay} ref={videoContainerRef} data-volume-level="high">
             <img className="thumbnail-img" id="thumbnailImg" />
-            <div className="video-controls-container ">
+            <div className="video-controls-container py-2 place-items-center">
                 <div className="timeline-container" id="timelineContainer" ref={timelineContainer}>
                     <div className="timeline">
                         <img className="preview-img" id="previewImgSrc" />
                         <div className="thumb-indicator"></div>
                     </div>
                 </div>
-                <div className="controls">
-                    <button className="play-pause-btn" onClick={togglePauseAndPlay}>
-                        {!isPlaying && <button><IoPlay className='text-3xl'/></button>}
-                        {!isPaused &&  <button><IoPause  className='text-3xl'/></button>}
-                     
-                    </button>
-                    <div className="volume-container">
-
-                        <button className="mute-btn">
-                            
-                            <VolumeLowIcon/>
-
-                            <VolumeHighIcon/>
-
-                            <VolumeMutedIcon/>
-
-                        </button>
-
-                        <input className="volume-slider" type="range" min="0" max="1" step="any" value="1" />
-                    </div>
-                    <div className="duration-container">
-                        <div className="current-time">0.00</div>
-                        /
-                        <div className="total-time"></div>
-                    </div>
-
-                
-                    <div className='place-items-center flex'>
-                        <button className="playback-reduce" id="playbackSpeedReduce" >
-                        <IoIosArrowBack className='text-2xl'/>
-                        </button>
-
-                       
-                        <button className="speed-btn wide-btn" id="speedBtn">
-                            1x
-                        </button>
-                        <button className="playback-increase" id="playbackSpeedIncrease">
-                            <IoIosArrowForward className='text-2xl'/>
-                        </button>
-                    </div>
-
-                    <button className="captions-btn">                        
-                        <FaClosedCaptioning className='w-[100%]'/>
-                    </button>
-                    
-                    <button className="mini-player-btn">
-                       <MiniPlayer/>
-                    </button>
-                    <button className="theater-btn">
+                <div className="controls flex flex-row justify-between mt-2">
+                    <div className='flex gap-5'>
+                        <button className="play-pause-btn" onClick={togglePauseAndPlay}>
+                            {!isPlaying && <button><IoPlay className='text-3xl'/></button>}
+                            {!isPaused &&  <button><IoPause  className='text-3xl'/></button>}
                         
-                        <TheatherIcon/>
+                        </button>
+                        <div className="volume-container">
 
-                        <TheatherMiniIcon/>
-                    </button>
-                    <button className="fullscreen-btn">
-                       
-                        <BsFullscreen className="open"/>
-                        <BsFullscreenExit className="close"/>
+                            <button className="mute-btn">
+                                
+                                <VolumeLowIcon/>
 
-                  </button>                
+                                <VolumeHighIcon/>
+
+                                <VolumeMutedIcon/>
+
+                            </button>
+
+                            <input className="volume-slider" type="range" min="0" max="1" step="any" value="1" />
+                        </div>
+
+                        
+                        <div className="duration-container">
+                            <div className="current-time">0.00</div>
+                            /
+                            <div className="total-time"></div>
+                        </div>
+                    </div>
+                    <div className='flex gap-4'>
+                        <button className='flex justify-center place-items-center'>
+
+                            <RxDoubleArrowLeft className='text-[30px]'/>
+                            <span className='text-[10px]'>30</span>
+                        </button>
+                        <button className='flex justify-center place-items-center'>
+                            <span className='text-[10px]'>30</span>
+                            <RxDoubleArrowRight className='text-[30px]'/>
+                        </button>
+                    </div>
+                    <div className='flex gap-5'>
+                        <div className='place-items-center flex'>
+                            <button className="playback-reduce" id="playbackSpeedReduce" >
+                            <IoIosArrowBack className='text-2xl'/>
+                            </button>
+
+                        
+                            <button className="speed-btn wide-btn" id="speedBtn">
+                                1x
+                            </button>
+                            <button className="playback-increase" id="playbackSpeedIncrease">
+                                <IoIosArrowForward className='text-2xl'/>
+                            </button>
+                        </div>
+                   
+                        <button className="captions-btn">                        
+                            <FaClosedCaptioning className='w-[100%]'/>
+                        </button>
+                        
+                        <button className="mini-player-btn" onClick={toggleMiniPlayerMode}>
+                        <MiniPlayer/>
+                        </button>
+                        <button className="theater-btn" onClick={toggleTheaterMode}>
+                            
+                            {!isTheatherMode && <TheatherIcon/>}
+
+                            {isTheatherMode && <TheatherMiniIcon/>}
+                        </button>
+                        <button className="fullscreen-btn" onClick={toggleFullScreenMode}>
+                        
+                            {!isFullscreen && <BsFullscreen/>}
+                            {isFullscreen && <BsFullscreenExit/>}
+
+                        </button> 
+                  </div>               
                 </div>
             </div>
 
         
-            <video className='w-[100%] h-[90vh] bg-black' ref={videoRef} src={miracles} autoPlay></video>
+            <video className='w-[100%] h-[90vh] bg-[black]' ref={videoRef} src={miracles}></video>
                 
             {/* <audio id="audioPlayer" controls></audio> */}
 
         </div>
-        <div className="directory px-2">
+        <div className={`directory px-2 ${isTheatherMode?'':'w-[30%]'} `}>
             <div className="select-fles flex flex-row gap-3 my-2">
-                <div className="button bg-black text-white px-3 py-1 cursor-pointer rounded">
+                <div className="button bg-[#1C274C] hover:bg-black text-white px-3 py-1 cursor-pointer rounded">
                     <label htmlFor="fileDirInput"  className='cursor-pointer'>Select folder</label>
                     <input type="file" hidden id="fileDirInput" 
                         {...({ webkitdirectory: true, directory: true } as React.InputHTMLAttributes<HTMLInputElement>)} onChange={handleFileDirChange} multiple />
                 
                 </div>
-                <div className="button bg-black text-white px-3 py-1  rounded">
+                <div className="button bg-[#1C274C] hover:bg-black  text-white px-3 py-1 rounded">
                     <label htmlFor="fileInput" className='cursor-pointer'>Select files</label>
                     <input type="file" hidden id="fileInput" onChange={handleFileChange} multiple />
                 </div>
