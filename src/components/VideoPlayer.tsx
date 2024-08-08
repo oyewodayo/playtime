@@ -33,6 +33,10 @@ const VideoPlayer = () => {
   const [currentColor, setCurrentColor] = useState("#ffffff");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isTheatherMode, setIsTheatherMode] = useState(true);
+  const [isMute, setIsMute] = useState(true);
+  const [currentSkipTime, setCurrentSkipTime] = useState<number>(30);
+  const [showSkipTime, setShowSkipTime] = useState<boolean>(false);
+  const [currentPlaySpeed, setCurrentPlaySpeed] = useState<string>("1x");
   
   const videoExtensions = ['.mp4', '.avi', '.mkv', '.mov', '.wmv'];
   const audioExtensions = ['.mp3', '.wav', '.aac', '.flac', '.ogg'];
@@ -118,6 +122,16 @@ const VideoPlayer = () => {
     const videoPlayer = videoRef.current;
     if (videoPlayer) {
       videoPlayer.muted = !videoPlayer.muted;
+      if (videoPlayer.muted || videoPlayer.volume === 0) {
+        setVolumeLevel('muted');
+      } else if (videoPlayer.volume >= 0.5) {
+        
+        setVolumeLevel('high');
+      } else {
+        setVolumeLevel('low');
+      }
+      console.log(volumeLevel)
+      console.log(videoPlayer.volume)
     }
   };
 
@@ -159,12 +173,56 @@ const VideoPlayer = () => {
         setIsPaused(true)
     }
    
-    console.log(videoRef.current?.paused)
   }
+
+  const playbackSpeedIncrease = ()=>{
+    if (videoRef.current){
+        let newPlaybackRate = videoRef.current.playbackRate + 0.25;
+        videoRef.current.playbackRate = newPlaybackRate
+        setCurrentPlaySpeed(`${newPlaybackRate }x`)
+    }
+  }
+
+  const playbackSpeedReduce = ()=>{
+    if (videoRef.current){
+      let newPlaybackRate = videoRef.current.playbackRate - 0.25;
+      videoRef.current.playbackRate = newPlaybackRate
+      setCurrentPlaySpeed(`${newPlaybackRate }x`)
+    }
+  }
+
+  const playbackSpeedNormal = ()=>{
+    if (videoRef.current){
+      let newPlaybackRate = 1;
+      videoRef.current.playbackRate = newPlaybackRate
+      setCurrentPlaySpeed(`${newPlaybackRate }x`)
+    }
+  }
+
+
+
+  const handleForwardSkip = (e:React.MouseEvent<HTMLButtonElement>)=>{
+
+    setShowSkipTime(!showSkipTime);
+  }
+
+  const handleForwardSkipTime = (e:React.MouseEvent<HTMLButtonElement>)=>{
+    const buttonInnerText = e.currentTarget.innerText;
+    setCurrentSkipTime(Number(buttonInnerText))
+    setShowSkipTime(false);
+  }
+
+  const selectSkipTiming = (value:number)=>{
+
+    setCurrentSkipTime(Number(value))
+    setShowSkipTime(false);
+  }
+
+
 
   useEffect(() => {
     const videoPlayer = videoRef.current;
-   
+    console.log(videoPlayer)
     if (videoPlayer) {
       videoPlayer.addEventListener('play', () => setIsPaused(false));
       videoPlayer.addEventListener('pause', () => setIsPaused(true));
@@ -172,7 +230,9 @@ const VideoPlayer = () => {
         if (videoPlayer.muted || videoPlayer.volume === 0) {
           setVolumeLevel('muted');
         } else if (videoPlayer.volume >= 0.5) {
-          setVolumeLevel('high');
+            console.log(videoPlayer.muted)
+            console.log(volumeLevel)
+          setVolumeLevel('low');
         } else {
           setVolumeLevel('low');
         }
@@ -222,7 +282,7 @@ const VideoPlayer = () => {
   );
 
   const VolumeLowIcon = () => (
-    <svg className="volume-low-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg className="voume-low-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
         <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g>
         <g id="SVGRepo_iconCarrier"> 
@@ -236,7 +296,7 @@ const VideoPlayer = () => {
     </svg>
   );
   const VolumeHighIcon = () => (
-    <svg  className="volume-high-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg  className="voume-high-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
         <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g>
         <g id="SVGRepo_iconCarrier"> 
@@ -247,7 +307,7 @@ const VideoPlayer = () => {
     </svg>
   );
   const VolumeMutedIcon = () => (
-    <svg  className="volume-muted-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg  className="volme-muted-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
         <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g>
         <g id="SVGRepo_iconCarrier"> 
@@ -260,7 +320,7 @@ const VideoPlayer = () => {
 
   return (
     <div className={`${isTheatherMode?'':'flex flex-row'} w-[100%]  h-[80%] justify-start align-top place-content-start`}>
-        <div className={` ${isTheatherMode?'w-[100%]':'w-[75%]'} video-container paused captions bg-black rounded`} onClick={togglePauseAndPlay} ref={videoContainerRef} data-volume-level="high">
+        <div className={` ${isTheatherMode?'w-[100%]':'w-[75%]'} video-container paused captions bg-black rounded`} ref={videoContainerRef} data-volume-level="high">
             <img className="thumbnail-img" id="thumbnailImg" />
             <div className="video-controls-container py-2 place-items-center">
                 <div className="timeline-container" id="timelineContainer" ref={timelineContainer}>
@@ -278,13 +338,13 @@ const VideoPlayer = () => {
                         </button>
                         <div className="volume-container">
 
-                            <button className="mute-btn">
+                            <button className="mute-btn z-20 w-7" onClick={toggleMute}>
                                 
-                                <VolumeLowIcon/>
+                               {volumeLevel==="low" && <VolumeLowIcon/>}
 
-                                <VolumeHighIcon/>
+                                {volumeLevel==="high" && <VolumeHighIcon/>}
 
-                                <VolumeMutedIcon/>
+                                {volumeLevel==="muted" &&  <VolumeMutedIcon/>}
 
                             </button>
 
@@ -299,45 +359,75 @@ const VideoPlayer = () => {
                         </div>
                     </div>
                     <div className='flex gap-4'>
-                        <button className='flex justify-center place-items-center'>
+                        <button className='flex justify-center place-items-center'
+                          onClick={handleForwardSkipTime} onDoubleClick={handleForwardSkip}
+                        >
 
-                            <RxDoubleArrowLeft className='text-[30px]'/>
-                            <span className='text-[10px]'>30</span>
+                            <RxDoubleArrowLeft className='text-[20px]'/>
+                            <span className='text-[10px]'>{currentSkipTime}</span>
                         </button>
-                        <button className='flex justify-center place-items-center'>
-                            <span className='text-[10px]'>30</span>
-                            <RxDoubleArrowRight className='text-[30px]'/>
+                        <button className='flex justify-center place-items-center' 
+                        onClick={handleForwardSkipTime} onDoubleClick={handleForwardSkip}
+                        >
+                          <span className='text-[10px]'>{currentSkipTime}</span>
+                          <RxDoubleArrowRight className='text-[20px]'/>
                         </button>
+
+                        {showSkipTime && (
+                           <div className="origin-bottom-right absolute bottom-full w-[120px] rounded-md shadow-lg bg-white text-gray-700 ring-1 ring-black ring-opacity-5">
+                           <div className="py-1  w-[100%]">
+                             <button
+                               className="w-[100%] px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left"
+                             onClick={()=>selectSkipTiming(5)}
+                             >
+                               5 sec
+                             </button>
+                             <button
+                               className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left"
+                               onClick={()=>selectSkipTiming(10)}
+                             >
+                               10 sec
+                             </button>
+                             <button
+                               className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left"
+                               onClick={()=>selectSkipTiming(15)}
+                             >
+                               15 sec
+                             </button>
+                           </div>
+                         </div>
+                        )}
                     </div>
+
                     <div className='flex gap-5'>
                         <div className='place-items-center flex'>
-                            <button className="playback-reduce" id="playbackSpeedReduce" >
+                            <button className="playback-reduce" id="playbackSpeedReduce" onClick={playbackSpeedReduce} >
                             <IoIosArrowBack className='text-2xl'/>
                             </button>
-
                         
-                            <button className="speed-btn wide-btn" id="speedBtn">
-                                1x
+                            <button className="speed-btn wide-btn" id="speedBtn" onClick={playbackSpeedNormal}>
+                                {currentPlaySpeed}
                             </button>
-                            <button className="playback-increase" id="playbackSpeedIncrease">
+
+                            <button className="playback-increase" id="playbackSpeedIncrease" onClick={playbackSpeedIncrease}>
                                 <IoIosArrowForward className='text-2xl'/>
                             </button>
                         </div>
                    
-                        <button className="captions-btn">                        
+                        <button className="captions-btn w-7">                        
                             <FaClosedCaptioning className='w-[100%]'/>
                         </button>
                         
-                        <button className="mini-player-btn" onClick={toggleMiniPlayerMode}>
+                        <button className="mini-player-btn w-7" onClick={toggleMiniPlayerMode}>
                         <MiniPlayer/>
                         </button>
-                        <button className="theater-btn" onClick={toggleTheaterMode}>
+                        <button className="theater-btn w-7" onClick={toggleTheaterMode}>
                             
                             {!isTheatherMode && <TheatherIcon/>}
 
                             {isTheatherMode && <TheatherMiniIcon/>}
                         </button>
-                        <button className="fullscreen-btn" onClick={toggleFullScreenMode}>
+                        <button className="fullscreen-btn w-7" onClick={toggleFullScreenMode}>
                         
                             {!isFullscreen && <BsFullscreen/>}
                             {isFullscreen && <BsFullscreenExit/>}
