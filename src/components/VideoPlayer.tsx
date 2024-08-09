@@ -3,9 +3,9 @@ import './player.css'
 import React, { useState, useRef, useEffect } from 'react';
 import miracles from '../assets/miracles.mp4';
 import caption from '../assets/caption.svg';
-import { IoArrowBack, IoPause, IoPlay } from 'react-icons/io5';
+import { IoArrowBack, IoPause, IoPlay, IoSettings } from 'react-icons/io5';
 import { IoIosArrowBack, IoIosArrowForward } from 'react-icons/io';
-import { FaClosedCaptioning, FaTheaterMasks } from 'react-icons/fa';
+import { FaClosedCaptioning, FaCog, FaTheaterMasks } from 'react-icons/fa';
 import { BsDot, BsFullscreen, BsFullscreenExit } from 'react-icons/bs';
 import { MdTheaters } from 'react-icons/md';
 import { TbArrowBackUpDouble, TbArrowForwardUpDouble } from 'react-icons/tb';
@@ -30,7 +30,7 @@ const VideoPlayer = () => {
   const [currentTime, setCurrentTime] = useState<number>(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
-  const timelineContainer = useRef<HTMLDivElement>(null);
+  const timelineContainerRef = useRef<HTMLDivElement>(null);
   const [isPaused, setIsPaused] = useState<boolean>(true);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [volumeLevel, setVolumeLevel] = useState<string>('high');
@@ -40,12 +40,14 @@ const VideoPlayer = () => {
   const [isTheatherMode, setIsTheatherMode] = useState(true);
   const [isMute, setIsMute] = useState(true);
   const [currentSkipTime, setCurrentSkipTime] = useState<number>(30);
+  const [currentTimeElement, setCurrentTimeElement] = useState<string | null>("0:00");
+  const [totalTimeElement, setTotalTimeElement] = useState<string | null>(null);
   const [showSkipTime, setShowSkipTime] = useState<boolean>(false);
   const [currentPlaySpeed, setCurrentPlaySpeed] = useState<string>("1x");
   const [showAlert, setShowAlert] = useState(false);
   const [alertTitle, setAlertTitle] = useState("Alert");
   const [alertMessage, setAlertMessage] = useState("This is an alert message");
-
+  const animationFrameRef = useRef(null);
   const videoExtensions = ['.mp4', '.avi', '.mkv', '.mov', '.wmv'];
   const audioExtensions = ['.mp3', '.wav', '.aac', '.flac', '.ogg'];
 
@@ -182,15 +184,62 @@ const VideoPlayer = () => {
     }
   };
 
+
+const formatDuration = (time:number)=>{
+    const seconds = Math.floor(time % 60)
+    const minutes = Math.floor(time/60) % 60
+    const hours = Math.floor(time / 3600)
+
+    if (hours === 0) {
+        return `${minutes}:${leadingZeroFormatter.format(seconds) }`;
+    }else{
+        return `${hours}:${minutes}:${leadingZeroFormatter.format(seconds) }`;
+    }
+    
+}
+
+
+const timelineTime = () =>{
+  if (videoRef.current) {
+      
+    setTotalTimeElement(formatDuration(Number(videoRef.current.duration)));
+    setCurrentTimeElement(formatDuration(videoRef.current.currentTime));
+       const percent  = Number(videoRef.current.currentTime/videoRef.current.duration);
+       console.log(percent)
+      if (timelineContainerRef.current) {
+      
+        timelineContainerRef.current.style.setProperty("--progress-position",percent.toString());
+      }
+      if (timelineContainerRef.current) {
+        timelineContainerRef.current.style.setProperty("--progress-position", percent.toString());
+      }
+  }
+}
+
+const updateTimeline = () => {
+  if (!videoRef.current?.paused) {
+    timelineTime();
+    requestAnimationFrame(updateTimeline);
+  }
+};
+
   const togglePauseAndPlay = () => {
+  
     if (videoRef.current?.paused) {
+      console.log(formatDuration(videoRef.current.duration));
       videoRef.current.play()
       setIsPlaying(true)
       setIsPaused(false)
+      requestAnimationFrame(updateTimeline); // Start updating the timeline
     } else {
       videoRef.current?.pause()
       setIsPlaying(false)
       setIsPaused(true)
+      // Cancel the animation frame request when pausing
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(requestAnimationFrame(updateTimeline));
+    
+      }
     }
 
   }
@@ -219,17 +268,6 @@ const VideoPlayer = () => {
     }
   }
 
-
-  //   video.addEventListener("loadeddata",(e)=>{
-  //     totalTimeElement.textContent = formatDuration(video.duration)
-  // })
-
-  // video.addEventListener("timeupdate",()=>{
-  //     currentTimeElement.textContent = formatDuration(video.currentTime)
-  //    const percent  = video.currentTime/video.duration;
-  //     timelineContainer.style.setProperty("--progress-position",percent);
-
-  // })
 
   const leadingZeroFormatter = new Intl.NumberFormat(undefined, { minimumIntegerDigits: 2 })
 
@@ -382,7 +420,7 @@ const VideoPlayer = () => {
       <div className={` ${isTheatherMode ? 'w-[100%]' : 'w-[75%]'} video-container paused captions bg-black rounded`} ref={videoContainerRef} data-volume-level="high">
         <img className="thumbnail-img" id="thumbnailImg" />
         <div className="video-controls-container py-2 place-items-center">
-          <div className="timeline-container" id="timelineContainer" ref={timelineContainer}>
+          <div className="timeline-container" id="timelineContainer" ref={timelineContainerRef}>
             <div className="timeline">
               <img className="preview-img" id="previewImgSrc" />
               <div className="thumb-indicator"></div>
@@ -412,9 +450,9 @@ const VideoPlayer = () => {
 
 
               <div className="duration-container">
-                <div className="current-time">0.00</div>
+                <div className="current-time">{currentTimeElement}</div>
                 /
-                <div className="total-time"></div>
+                <div className="total-time">{totalTimeElement}</div>
               </div>
             </div>
             <div className='flex gap-4'>
@@ -478,7 +516,7 @@ const VideoPlayer = () => {
         </div>
 
 
-        <video className='w-[100%] h-[90vh] bg-[black]' ref={videoRef} src={miracles}></video>
+        <video className='w-[100%] h-[90vh] bg-[black] opacity-50' ref={videoRef} src={miracles}></video>
 
         {/* <audio id="audioPlayer" controls></audio> */}
 
