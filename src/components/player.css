@@ -168,6 +168,7 @@ video{
     margin-inline: .5rem;
     cursor: pointer;
     display: flex;
+    width: 100%;
     align-items: center;
 }
 
