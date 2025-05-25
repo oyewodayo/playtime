@@ -1,7 +1,7 @@
-import './player.css'
-import React, { useState, useRef, useEffect } from 'react';
+import './player.css';
+import React, { useState, useRef, useEffect, ChangeEvent, MouseEvent } from 'react';
 import playtime from '../assets/playtime.mp4';
-import { IoPause, IoPlay } from 'react-icons/io5';
+import { IoFolder, IoPause, IoPlay } from 'react-icons/io5';
 import { IoIosArrowBack, IoIosArrowForward } from 'react-icons/io';
 import { FaClosedCaptioning, FaCog } from 'react-icons/fa';
 import { BsFullscreen, BsFullscreenExit } from 'react-icons/bs';
@@ -9,515 +9,371 @@ import { RxDoubleArrowLeft, RxDoubleArrowRight } from 'react-icons/rx';
 import Alert from './custom/Alert';
 import Dropdown from './custom/Dropdown';
 import PlaytimeSettings from './PlaytimeSettings';
+import useAutoHideControls from '../hooks/useAutoHideControls';
+import { MediaFile, ProcessedFilesResult } from '../utils/videoUtils';
 
-// interface VideoProps {
-//   src: string;
-//   controls?: boolean;
-//   // Add other relevant props
-// }
+// Import utility functions
+import {
+  formatDuration,
+  getVolumeLevel,
+  adjustPlaybackRate,
+  skipTime,
+  setVolume,
+  toggleFullscreen,
+  togglePictureInPicture,
+  updateTimelineProgress
+} from '../utils/videoUtils';
 
-// interface CustomInputProps extends React.HTMLAttributes<HTMLInputElement> {
-//   webkitdirectory?: boolean;
-//   directory?: boolean;
-// }
+import {
+  handleFileSelection,
+  handleFolderSelection,
+  playMediaFile,
+  createPlaylist,
+  handleAutoPlay
+} from '../handlers/mediaHandlers';
 
-interface MediaFile {
-  file: File;
-  url: string;
-  name: string;
-  type: 'video' | 'audio';
-  relativePath: string;
+import { createKeyboardHandler } from '../handlers/keyboardHandlers';
+
+
+
+interface PlayMediaResult {
+  success: boolean;
+  alert?: {
+    title: string;
+    message: string;
+  };
 }
 
-const VideoPlayer = () => {
+interface CreatePlaylistResult {
+  alert: {
+    title: string;
+    message: string;
+  };
+}
+
+interface PlayerState {
+  isPlaying?: boolean;
+  isPaused?: boolean;
+  currentlyPlayingFile?: string | null;
+  currentFileTitle?: string;
+}
+
+interface TimelineProgress {
+  currentTime: string;
+  totalTime: string;
+}
+
+type VolumeLevel = 'low' | 'high' | 'muted';
+
+// Component interfaces for keyboard handler
+interface KeyboardHandlerActions {
+  togglePauseAndPlay: () => void;
+  toggleFullScreenMode: () => Promise<void>;
+  toggleTheaterMode: () => void;
+  toggleMiniPlayerMode: () => Promise<void>;
+  toggleMute: () => void;
+  toggleCaptions: () => void;
+  playbackSpeedIncrease: () => void;
+  playbackSpeedReduce: () => void;
+}
+
+const VideoPlayer: React.FC = () => {
+  // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const timelineContainerRef = useRef<HTMLDivElement>(null);
+  const animationFrameRef = useRef<number | null>(null);
+
+  // Core player state
   const [isPaused, setIsPaused] = useState<boolean>(true);
-  const [isClicked, setIsClicked] = useState<boolean>(false);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(true);
-  const [volumeLevel, setVolumeLevel] = useState<string>('high');
-  const [volume, setVolume] = useState<number>(1.0);
-  const [sceneFiles, setSceneFiles] = useState<string[]>([]);
-  const [captionsVisible, setCaptionsVisible] = useState<boolean>(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isTheatherMode, setIsTheatherMode] = useState(true);
-  const [currentSkipTime, setCurrentSkipTime] = useState<number>(30);
-  const [currentTimeElement, setCurrentTimeElement] = useState<string | null>("0:00");
-  const [totalTimeElement, setTotalTimeElement] = useState<string | null>(null);
-  const [showSkipTime, setShowSkipTime] = useState<boolean>(false);
-  const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [volume, setVolumeState] = useState<number>(1.0);
+  const [volumeLevel, setVolumeLevel] = useState<VolumeLevel>('high');
   const [currentPlaySpeed, setCurrentPlaySpeed] = useState<string>("1x");
+
+  // UI state
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [isTheatherMode, setIsTheatherMode] = useState<boolean>(true);
+  const [captionsVisible, setCaptionsVisible] = useState<boolean>(false);
+  const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [showSkipTime, setShowSkipTime] = useState<boolean>(false);
+
+  // File and playlist state
+  const [files, setFiles] = useState<MediaFile[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<MediaFile[]>([]);
   const [currentlyPlayingFile, setCurrentlyPlayingFile] = useState<string | null>(null);
-  const [showAlert, setShowAlert] = useState(false);
-  const [alertTitle, setAlertTitle] = useState("Alert");
-  const [alertMessage, setAlertMessage] = useState("This is an alert message");
-  const [currentFileTitle, setCurrentFileTitle] = useState("");
-  const [isAutoPlay, setAutoPlay] = useState<boolean>(true);
+  const [currentFileTitle, setCurrentFileTitle] = useState<string>("");
   const [folderName, setFolderName] = useState<string>("");
   const [fileCount, setFileCount] = useState<number>(0);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const animationFrameRef = useRef<number | null>(null);
-  const videoExtensions = ['.mp4', '.avi', '.mkv', '.mov', '.wmv'];
-  const audioExtensions = ['.mp3', '.wav', '.aac', '.flac', '.ogg'];
 
-  const [files, setFiles] = useState<Array<{
-    file: File;
-    url: string;
-    name: string;
-    type: 'video' | 'audio';
-    relativePath: string;
-  }>>([]);
+  // Time and skip state
+  const [currentTimeElement, setCurrentTimeElement] = useState<string>("0:00");
+  const [totalTimeElement, setTotalTimeElement] = useState<string | null>(null);
+  const [currentSkipTime, setCurrentSkipTime] = useState<number>(30);
 
+  // Settings and preferences
+  const [isAutoPlay, setAutoPlay] = useState<boolean>(true);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const inputFiles = event.target.files;
-    if (!inputFiles) return;
-  
-    const newFiles = Array.from(inputFiles)
-      .filter(file => {
-        const ext = file.name.split('.').pop()?.toLowerCase();
-        return ext && (videoExtensions.includes(`.${ext}`) || audioExtensions.includes(`.${ext}`));
-      })
-      .map(file => ({
-        file,
-        url: URL.createObjectURL(file),
-        name: file.name,
-        type: videoExtensions.includes(`.${file.name.split('.').pop()?.toLowerCase()}`) 
-          ? 'video' as const 
-          : 'audio' as const,
-        relativePath: file.name
-      }));
-  
-    setFiles(newFiles); // Uncommented this line
-    setSelectedFiles(newFiles.map(f => f.file));
-    setFileCount(newFiles.length);
-    setFolderName("Selected Files");
-  
-    if (newFiles.length > 0) {
-      setAlertTitle("Files Loaded");
-      setAlertMessage(`Successfully loaded ${newFiles.length} media files`);
-      setShowAlert(true);
-    } else {
-      setAlertTitle("No Media Files");
-      setAlertMessage("No supported media files found");
-      setShowAlert(true);
-    }
-  };
+  // Alert state
+  const [showAlert, setShowAlert] = useState<boolean>(false);
+  const [alertTitle, setAlertTitle] = useState<string>("Alert");
+  const [alertMessage, setAlertMessage] = useState<string>("This is an alert message");
 
-function createMediaFile(file: File, folderPath: string): {
-  file: File;
-  url: string;
-  name: string;
-  type: 'video' | 'audio';
-  relativePath: string;
-} {
-  const ext = file.name.split('.').pop()?.toLowerCase() || '';
-  return {
-      file,
-      url: URL.createObjectURL(file),
-      name: file.name,
-      type: videoExtensions.includes(`.${ext}`) ? 'video' : 'audio',
-      relativePath: file.webkitRelativePath.substring(folderPath.length + 1)
-  };
-}
+  const { visible, show, hide } = useAutoHideControls();
 
-const handleFileDirChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-  const files = event.target.files;
-  if (!files || files.length === 0) return;
-
-  const folderPath = files[0].webkitRelativePath.split('/')[0];
-  setFolderName(folderPath);
-
-  const validFiles = Array.from(files)
-      .filter(file => {
-          const ext = file.name.split('.').pop()?.toLowerCase();
-          return ext && (videoExtensions.includes(`.${ext}`) || audioExtensions.includes(`.${ext}`));
-      })
-      .map(file => createMediaFile(file, folderPath));
-
-  setFiles(validFiles);
-  setSelectedFiles(validFiles.map(f => f.file));
-  setFileCount(validFiles.length);
-
-  if (validFiles.length > 0) {
-      setAlertTitle("Folder Loaded");
-      setAlertMessage(`Successfully loaded ${validFiles.length} media files from "${folderPath}"`);
-  } else {
-      setAlertTitle("No Media Files");
-      setAlertMessage(`No supported media files found in "${folderPath}"`);
-  }
-  setShowAlert(true);
-};
-
-  const playFile = async (file: MediaFile) => {
-    if (!file.url || !file.type) return;
-
-    setCurrentlyPlayingFile(file.url);
-
-    const videoPlayer = videoRef.current;
-    const audioPlayer = document.getElementById('audioPlayer') as HTMLAudioElement | null;
-
-    // Reset states
-    setIsPlaying(false);
-    setIsPaused(true);
-
-    try {
-      if (file.type === 'video' && videoPlayer) {
-        // Check if same video is already playing
-        if (videoPlayer.src === file.url && !videoPlayer.paused) {
-            setAlertTitle("Alert");
-            setAlertMessage("This file is currently playing");
-            setShowAlert(true);
-            return;
-        }
-
-        videoPlayer.src = file.url;
-        setCurrentFileTitle(file.name || "Unknown File");
-        videoPlayer.style.display = 'block';
-        if (audioPlayer) audioPlayer.style.display = 'none';
-        videoPlayer.addEventListener('loadedmetadata', () => {
-            setTotalTimeElement(formatDuration(videoPlayer.duration));
-        });
-        
-        await videoPlayer.play();
-        setIsPlaying(true);
-        setIsPaused(false);
-          
-      } else if (file.type === 'audio' && audioPlayer) {
-        audioPlayer.src = file.url;
-        setCurrentFileTitle(file.name || "Unknown File");
-        audioPlayer.style.display = 'block';
-        if (videoPlayer) videoPlayer.style.display = 'none';
-
-        
-
-        await audioPlayer.play();
-        setIsPlaying(true);
-        setIsPaused(false);
-      }
-    } catch (error) {
-        console.error("Playback failed:", error);
-        setIsPlaying(false);
-        setIsPaused(true);
-    }
-  };
-
-  const createPlaylist = () => {
-    if (selectedFiles.length === 0) {
-      setAlertTitle("No Files");
-      setAlertMessage("No media files have been selected to create a playlist");
-      setShowAlert(true);
-      return;
-    }
-
-    // Here you could implement playlist functionality
-    // For now, we just show a message confirming playlist creation
-    setAlertTitle("Playlist Created");
-    setAlertMessage(`Created playlist with ${selectedFiles.length} files`);
-    setShowAlert(true);
-  };
-
-  const toggleSettings = () => {
-    setShowSettings(!showSettings);
-  };
-
-  const togglePauseAndPlay = () => {
-    if (videoRef.current) {
-      const url = new URL(videoRef.current.src);
-      const filename = url.pathname?.split('/').pop() || "Unknown File";
-      setCurrentFileTitle(filename);
-      
-      if (videoRef.current?.paused) {
-        videoRef.current.play();
-        setIsPlaying(true);
-        setIsPaused(false);
-        requestAnimationFrame(updateTimeline);
-      } else {
-        videoRef.current?.pause();
-        setIsPlaying(false);
-        setIsPaused(true);
-        if (animationFrameRef.current) {
-          cancelAnimationFrame(requestAnimationFrame(updateTimeline));
-        }
-      }
-    }
-  };
-
-  const toggleMute = () => {
-    const videoPlayer = videoRef.current;
-    if (videoPlayer) {
-      videoPlayer.muted = !videoPlayer.muted;
-      if (videoPlayer.muted || videoPlayer.volume === 0) {
-        setVolumeLevel('muted');
-      } else if (videoPlayer.volume >= 0.5) {
-        setVolumeLevel('high');
-      } else {
-        setVolumeLevel('low');
-      }
-    }
-  };
-
-  const toggleCaptions = () => {
-    setCaptionsVisible((prev) => !prev);
-  };
-
-  const toggleTheaterMode = () => {
-    setIsTheatherMode(!isTheatherMode);
-  };
-
-  const toggleFullScreenMode = () => {
-    if (document.fullscreenElement == null) {
-      videoContainerRef.current?.requestFullscreen();
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
-    }
-  };
-
-  const toggleMiniPlayerMode = () => {
-    if (videoContainerRef.current?.classList.contains('mini-player')) {
-      document.exitPictureInPicture();
-    } else {
-      videoRef.current?.requestPictureInPicture();
-    }
-  };
-
-  const formatDuration = (time: number) => {
-    const seconds = Math.floor(time % 60);
-    const minutes = Math.floor(time / 60) % 60;
-    const hours = Math.floor(time / 3600);
-
-    if (hours === 0) {
-      return `${minutes}:${leadingZeroFormatter.format(seconds)}`;
-    } else {
-      return `${hours}:${minutes}:${leadingZeroFormatter.format(seconds)}`;
-    }
-  };
-
-  const timelineTime = () => {
-    if (videoRef.current) {
-      setTotalTimeElement(formatDuration(Number(videoRef.current.duration)));
-      setCurrentTimeElement(formatDuration(videoRef.current.currentTime));
-      const percent = Number(videoRef.current.currentTime / videoRef.current.duration);
-      if (timelineContainerRef.current) {
-        timelineContainerRef.current.style.setProperty("--progress-position", percent.toString());
-      }
-    }
-  };
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      switch (e.key) {
-        case "k":
-        case " ":
-          e.preventDefault();
-          togglePauseAndPlay();
+  // State update helper
+  const updatePlayerState = (newState: PlayerState): void => {
+    Object.entries(newState).forEach(([key, value]) => {
+      switch (key) {
+        case 'isPlaying':
+          setIsPlaying(value as boolean);
           break;
-        case "f":
-          toggleFullScreenMode();
+        case 'isPaused':
+          setIsPaused(value as boolean);
           break;
-        case "t":
-          toggleTheaterMode();
+        case 'currentlyPlayingFile':
+          setCurrentlyPlayingFile(value as string | null);
           break;
-        case "i":
-          toggleMiniPlayerMode();
-          break;
-        case "m":
-          toggleMute();
-          break;
-        case "ArrowLeft":
-        case "j":
-          playbackSpeedReduce();
-          break;
-        case "ArrowRight":
-        case "l":
-          playbackSpeedIncrease();
-          break;
-        case "c":
-          toggleCaptions();
+        case 'currentFileTitle':
+          setCurrentFileTitle(value as string);
           break;
         default:
           break;
       }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [
-    togglePauseAndPlay,
-    toggleFullScreenMode,
-    toggleTheaterMode,
-    toggleMiniPlayerMode,
-    toggleMute,
-    toggleCaptions]
-  );
-
-  // const updateTimeline = () => {
-  //   if (!videoRef.current?.paused) {
-  //     timelineTime();
-  //     requestAnimationFrame(updateTimeline);
-  //   }
-  // };
-  const updateTimeline = () => {
-    if (videoRef.current && !videoRef.current.paused) {
-        timelineTime();
-        animationFrameRef.current = requestAnimationFrame(updateTimeline);
-    }
-};
-
-useEffect(() => {
-  return () => {
-      if (animationFrameRef.current !== null) {
-          cancelAnimationFrame(animationFrameRef.current);
-      }
-  };
-}, []);
-
-  const handleVolumeSlider = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const newVolume = parseFloat(event.target.value);
-    setVolume(newVolume);
-
-    if (videoRef.current) {
-      videoRef.current.volume = newVolume;
-    }
+    });
   };
 
-  const playbackSpeedIncrease = () => {
-    if (videoRef.current) {
-      let newPlaybackRate = videoRef.current.playbackRate + 0.25;
-      videoRef.current.playbackRate = newPlaybackRate;
-      setCurrentPlaySpeed(`${newPlaybackRate}x`);
-    }
-  };
-
-  const playbackSpeedReduce = () => {
-    if (videoRef.current) {
-      let newPlaybackRate = videoRef.current.playbackRate - 0.25;
-      videoRef.current.playbackRate = newPlaybackRate;
-      setCurrentPlaySpeed(`${newPlaybackRate}x`);
-    }
-  };
-
-  const handleAutoplay = () => {
-    setAutoPlay(!isAutoPlay);
-  };
-
-  const playbackSpeedNormal = () => {
-    if (videoRef.current) {
-      let newPlaybackRate = 1;
-      videoRef.current.playbackRate = newPlaybackRate;
-      setCurrentPlaySpeed(`${newPlaybackRate}x`);
-    }
-  };
-
-  const leadingZeroFormatter = new Intl.NumberFormat(undefined, { minimumIntegerDigits: 2 });
-
-  const handleForwardSkip = (e: React.MouseEvent<HTMLButtonElement>) => {
-    setShowSkipTime(!showSkipTime);
-  };
-
-  const handleForwardSkipTime = (e: React.MouseEvent<HTMLButtonElement>) => {
-    const buttonInnerText = e.currentTarget.innerText;
-    setCurrentSkipTime(Number(buttonInnerText));
-
-    setTimeout(() => {
-      e.currentTarget.style.color = "red";
-    }, 2000);
-
-    setShowSkipTime(false);
-    if (videoRef.current) {
-      videoRef.current.currentTime += Number(buttonInnerText);
-    }
-  };
-
-  const handleBackwardSkipTime = (e: React.MouseEvent<HTMLButtonElement>) => {
-    const buttonInnerText = e.currentTarget.innerText;
-    e.currentTarget.style.color = "red";
-
-    setTimeout(() => {
-      e.currentTarget.style.color = "white";
-    }, 1000);
-
-    setCurrentSkipTime(Number(buttonInnerText));
-    setShowSkipTime(false);
-    if (videoRef.current) {
-      videoRef.current.currentTime -= Number(buttonInnerText);
-    }
-  };
-
-  const selectSkipTiming = (value: number) => {
-    setCurrentSkipTime(Number(value));
-    setShowSkipTime(false);
-  };
-
-  const handleShowAlert = () => {
+  // File handling
+  const onFilesProcessed = (result: ProcessedFilesResult): void => {
+    setFiles(result.files);
+    setSelectedFiles(result.selectedFiles);
+    setFileCount(result.fileCount);
+    setFolderName(result.folderName);
+    setAlertTitle(result.alertData.title);
+    setAlertMessage(result.alertData.message);
     setShowAlert(true);
   };
 
-  const handleScreenControls = () => {
-    if (showSettings === true) {
-      setShowSettings(false);
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    handleFileSelection(event, onFilesProcessed);
+  };
+
+  const handleFileDirChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    handleFolderSelection(event, onFilesProcessed);
+  };
+
+  const playFile = async (file: MediaFile): Promise<void> => {
+    const result: PlayMediaResult = await playMediaFile(file, videoRef.current, updatePlayerState);
+    
+    if (!result.success && result.alert) {
+      setAlertTitle(result.alert.title);
+      setAlertMessage(result.alert.message);
+      setShowAlert(true);
     }
   };
 
-  useEffect(() => {
-    const videoPlayer = videoRef.current;
-    if (videoPlayer) {
-      videoPlayer.muted = false;
+  const handleCreatePlaylist = (): void => {
+    const result: CreatePlaylistResult = createPlaylist(selectedFiles);
+    setAlertTitle(result.alert.title);
+    setAlertMessage(result.alert.message);
+    setShowAlert(true);
+  };
 
-      const handlePlay = () => {
-        setTimeout(() => {
-          videoPlayer.muted = false;
-          videoPlayer.volume = 1.0;
-        }, 1000);
-      };
-      
-      const handlePause = () => setIsPaused(true);
+  // Player controls
+  const togglePauseAndPlay = (): void => {
+    const video = videoRef.current;
+    if (!video) return;
 
-      const handleVolumeChange = () => {
-        if (videoPlayer.muted || videoPlayer.volume === 0) {
-          setVolumeLevel('muted');
-        } else if (videoPlayer.volume >= 0.5) {
-          setVolumeLevel('high');
-        } else {
-          setVolumeLevel('low');
-        }
-      };
-      
-      const handleEnded = () => {
-        videoPlayer.currentTime = 0;
-        videoPlayer.play();
-      };
-
-      videoPlayer.addEventListener('play', handlePlay);
-      videoPlayer.addEventListener('pause', handlePause);
-      videoPlayer.addEventListener('volumechange', handleVolumeChange);
-      videoPlayer.addEventListener('ended', handleEnded);
-
-      if (isAutoPlay) {
-        videoPlayer.muted = true;
-        videoPlayer.autoplay = true;
-        videoPlayer.play().catch((error) => {
-          console.error("Autoplay failed:", error);
-        });
+    if (video.paused) {
+      video.play();
+      setIsPlaying(true);
+      setIsPaused(false);
+      requestAnimationFrame(updateTimeline);
+    } else {
+      video.pause();
+      setIsPlaying(false);
+      setIsPaused(true);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
       }
-
-      return () => {
-        videoPlayer.removeEventListener('play', handlePlay);
-        videoPlayer.removeEventListener('pause', handlePause);
-        videoPlayer.removeEventListener('volumechange', handleVolumeChange);
-        videoPlayer.removeEventListener('ended', handleEnded);
-      };
     }
-  }, []);
+  };
 
-  const MiniPlayer = () => (
+  const toggleMute = (): void => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.muted = !video.muted;
+    setIsMuted(video.muted);
+    setVolumeLevel(getVolumeLevel(video.volume, video.muted));
+  };
+
+  const toggleCaptions = (): void => {
+    setCaptionsVisible(prev => !prev);
+  };
+
+  const toggleTheaterMode = (): void => {
+    setIsTheatherMode(!isTheatherMode);
+  };
+
+  const toggleFullScreenMode = async (): Promise<void> => {
+    const isFullscreenNow = await toggleFullscreen(videoContainerRef.current);
+    setIsFullscreen(isFullscreenNow);
+  };
+
+  const toggleMiniPlayerMode = async (): Promise<void> => {
+    await togglePictureInPicture(videoRef.current);
+  };
+
+  const playbackSpeedIncrease = (): void => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const newRate = adjustPlaybackRate(video.playbackRate, 0.25);
+    video.playbackRate = newRate;
+    setCurrentPlaySpeed(`${newRate}x`);
+  };
+
+  const playbackSpeedReduce = (): void => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const newRate = adjustPlaybackRate(video.playbackRate, -0.25);
+    video.playbackRate = newRate;
+    setCurrentPlaySpeed(`${newRate}x`);
+  };
+
+  const playbackSpeedNormal = (): void => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.playbackRate = 1;
+    setCurrentPlaySpeed("1x");
+  };
+
+  const handleVolumeChange = (e: ChangeEvent<HTMLInputElement>): void => {
+    const newVolume = parseFloat(e.target.value);
+    setVolumeState(newVolume);
+    setVolume(videoRef.current, newVolume);
+    setVolumeLevel(getVolumeLevel(newVolume, videoRef.current?.muted ?? false));
+  };
+
+  const handleForwardSkip = (): void => {
+    setShowSkipTime(!showSkipTime);
+  };
+
+  const handleForwardSkipTime = (e: MouseEvent<HTMLButtonElement>): void => {
+    const seconds = parseInt(e.currentTarget.innerText);
+    skipTime(videoRef.current, seconds);
+    setCurrentSkipTime(seconds);
+    setShowSkipTime(false);
+  };
+
+  const handleBackwardSkipTime = (e: MouseEvent<HTMLButtonElement>): void => {
+    const seconds = parseInt(e.currentTarget.innerText);
+    skipTime(videoRef.current, -seconds);
+    setCurrentSkipTime(seconds);
+    setShowSkipTime(false);
+  };
+
+  const selectSkipTiming = (value: number): void => {
+    setCurrentSkipTime(value);
+    setShowSkipTime(false);
+  };
+
+  const toggleSettings = (): void => {
+    setShowSettings(!showSettings);
+  };
+
+  const handleAutoplay = (): void => {
+    setAutoPlay(!isAutoPlay);
+  };
+
+  const handleScreenControls = (): void => {
+    // Implementation for screen controls
+  };
+
+  // Timeline and progress updates
+  const updateTimeline = (): void => {
+    if (videoRef.current && !videoRef.current.paused) {
+      const progress: TimelineProgress | null = updateTimelineProgress(
+        videoRef.current, 
+        timelineContainerRef.current
+      );
+      
+      if (progress) {
+        setCurrentTimeElement(progress.currentTime);
+        setTotalTimeElement(progress.totalTime);
+      }
+      
+      animationFrameRef.current = requestAnimationFrame(updateTimeline);
+    }
+  };
+
+  // Effects
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handlePlay = (): void => {
+      setIsPlaying(true);
+      setIsPaused(false);
+      updateTimeline();
+    };
+
+    const handlePause = (): void => {
+      setIsPlaying(false);
+      setIsPaused(true);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+
+    const handleVolumeChange = (): void => {
+      setVolumeLevel(getVolumeLevel(video.volume, video.muted));
+    };
+
+    const handleEnded = (): void => {
+      if (currentlyPlayingFile) { // This checks for both null and empty string
+        handleAutoPlay(files, currentlyPlayingFile, video, updatePlayerState, isAutoPlay);
+      }
+    };
+
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('pause', handlePause);
+    video.addEventListener('volumechange', handleVolumeChange);
+    video.addEventListener('ended', handleEnded);
+
+    // Set up keyboard shortcuts
+    const keyboardHandler = createKeyboardHandler({
+      togglePauseAndPlay,
+      toggleFullScreenMode,
+      toggleTheaterMode,
+      toggleMiniPlayerMode,
+      toggleMute,
+      toggleCaptions,
+      playbackSpeedIncrease,
+      playbackSpeedReduce
+    } as KeyboardHandlerActions);
+
+    document.addEventListener('keydown', keyboardHandler);
+
+    return () => {
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('pause', handlePause);
+      video.removeEventListener('volumechange', handleVolumeChange);
+      video.removeEventListener('ended', handleEnded);
+      document.removeEventListener('keydown', keyboardHandler);
+      
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [files, currentlyPlayingFile, isAutoPlay]);
+
+  // Icons components (could be moved to separate file)
+  const MiniPlayerIcon: React.FC = () => (
     <svg viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg" fill="#ffffff" stroke="#ffffff" strokeWidth="1.23">
       <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
       <g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round"></g>
@@ -530,7 +386,7 @@ useEffect(() => {
     </svg>
   );
   
-  const TheatherIcon = () => (
+  const TheaterIcon: React.FC = () => (
     <svg className="tall" viewBox="0 0 29 20" fill="none" xmlns="http://www.w3.org/2000/svg">
       <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
       <g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round"></g>
@@ -540,18 +396,8 @@ useEffect(() => {
     </svg>
   );
 
-  const TheatherMiniIcon = () => (
-    <svg className="" viewBox="0 0 40 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
-      <g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round"></g>
-      <g id="SVGRepo_iconCarrier">
-        <path fillRule="evenodd" clipRule="evenodd" d="M23 7C23 5.34315 21.6569 4 20 4H4C2.34315 4 1 5.34315 1 7V17C1 18.6569 2.34315 20 4 20H20C21.6569 20 23 18.6569 23 17V7ZM21 7C21 6.44772 20.5523 6 20 6H4C3.44772 6 3 6.44771 3 7V17C3 17.5523 3.44772 18 4 18H20C20.5523 18 21 17.5523 21 17V7Z" fill="#ffffff"></path>
-      </g>
-    </svg>
-  );
-
-  const VolumeLowIcon = () => (
-    <svg className="voume-low-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  const VolumeLowIcon: React.FC = () => (
+    <svg className="volume-low-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <g id="SVGRepo_bgCarrier" strokeWidth="0"></g>
       <g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round"></g>
       <g id="SVGRepo_iconCarrier">
@@ -564,10 +410,9 @@ useEffect(() => {
       </g>
     </svg>
   );
-  
-  
-  const VolumeHighIcon = () => (
-    <svg className="voume-high-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+
+  const VolumeHighIcon: React.FC = () => (
+    <svg className="volume-high-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
       <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g>
       <g id="SVGRepo_iconCarrier">
@@ -576,9 +421,11 @@ useEffect(() => {
         <path fill="#ffffff" fill-rule="evenodd" clip-rule="evenodd" d="M17.7571 8.41595C18.0901 8.21871 18.51 8.34663 18.6949 8.70166L18.0921 9.0588C18.6949 8.70166 18.6948 8.70134 18.6949 8.70166L18.6956 8.70295L18.6963 8.70432L18.6978 8.7073L18.7014 8.71428L18.7102 8.73227C18.7169 8.74607 18.7251 8.76348 18.7345 8.78457C18.7533 8.82676 18.7772 8.88363 18.8042 8.95574C18.8584 9.10004 18.9251 9.3049 18.99 9.57476C19.1199 10.115 19.2415 10.9119 19.2415 12.0003C19.2415 13.0888 19.1199 13.8857 18.99 14.4259C18.9251 14.6958 18.8584 14.9007 18.8042 15.045C18.7772 15.1171 18.7533 15.1739 18.7345 15.2161C18.7251 15.2372 18.7169 15.2546 18.7102 15.2684L18.7014 15.2864L18.6978 15.2934L18.6963 15.2964L18.6956 15.2978C18.6954 15.2981 18.6949 15.299 18.0921 14.9419L18.6949 15.299C18.51 15.6541 18.0901 15.782 17.7571 15.5847C17.427 15.3892 17.3063 14.9474 17.4846 14.5938L17.4892 14.5838C17.4955 14.5697 17.5075 14.5415 17.5236 14.4987C17.5557 14.4132 17.6039 14.2688 17.6539 14.0606C17.7539 13.6448 17.8622 12.9709 17.8622 12.0003C17.8622 11.0298 17.7539 10.3559 17.6539 9.94007C17.6039 9.73193 17.5557 9.58748 17.5236 9.50197C17.5075 9.45918 17.4955 9.43102 17.4892 9.41691L17.4846 9.40687C17.3063 9.05332 17.427 8.61152 17.7571 8.41595Z"></path>
       </g>
     </svg>
+    
   );
-  const VolumeMutedIcon = () => (
-    <svg className="volme-muted-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+
+  const VolumeMutedIcon: React.FC = () => (
+    <svg className="volume-muted-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
       <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g>
       <g id="SVGRepo_iconCarrier">
@@ -588,9 +435,27 @@ useEffect(() => {
     </svg>
   );
 
+  const renderVolumeIcon = (): JSX.Element => {
+    switch (volumeLevel) {
+      case 'low':
+        return <VolumeLowIcon />;
+      case 'high':
+        return <VolumeHighIcon />;
+      case 'muted':
+      default:
+        return <VolumeMutedIcon />;
+    }
+  };
 
   return (
-    <div onClick={handleScreenControls} className={`${isTheatherMode ? '' : 'flex flex-row'} relative w-[100%]  h-[80%] justify-start align-top place-content-start`}>
+    <div 
+      onMouseMove={show}
+      onMouseLeave={hide}
+      onTouchStart={show}
+      onTouchMove={show}
+      onClick={handleScreenControls} 
+      className={`${isTheatherMode ? '' : 'flex flex-row'} relative w-[100%] h-[80%] justify-start align-top place-content-start`}
+    >
       {showAlert && (
         <Alert
           title={alertTitle}
@@ -600,176 +465,261 @@ useEffect(() => {
           onClose={() => setShowAlert(false)}
         />
       )}
-      <div className={` ${isTheatherMode ? 'w-[100%]' : 'w-[75%]'} video-container paused captions bg-black rounded`} ref={videoContainerRef} data-volume-level="high">
-        <img className="thumbnail-img" id="thumbnailImg" />
+      
+      <div 
+        className={`${isTheatherMode ? 'w-[100%]' : 'w-[75%]'} video-container paused captions bg-black rounded`} 
+        ref={videoContainerRef} 
+        data-volume-level={volumeLevel}
+      >
+        <img className="thumbnail-img" id="thumbnailImg" alt="Video thumbnail" />
+        <div className="pointer-events-auto"></div>
+        
         <div className="video-controls-container py-2 place-items-center">
           <div className="timeline-container" id="timelineContainer" ref={timelineContainerRef}>
             <div className="timeline">
-              <img className="preview-img" id="previewImgSrc" />
+              <img className="preview-img" id="previewImgSrc" alt="Video preview" />
               <div className="thumb-indicator"></div>
             </div>
           </div>
+          
           <div className="controls flex flex-row justify-between mt-2">
             <div className='flex gap-5'>
               <button className="play-pause-btn" onClick={togglePauseAndPlay}>
-                {!isPlaying && <button><IoPlay className='text-3xl' /></button>}
-                {!isPaused && <button><IoPause className='text-3xl' /></button>}
-
+                {isPlaying ? <IoPause className='text-3xl' /> : <IoPlay className='text-3xl' />}
               </button>
+              
               <div className="volume-container">
                 <button className="mute-btn z-20 w-7" onClick={toggleMute}>
-
-                  {volumeLevel === "low" && <VolumeLowIcon />}
-
-                  {volumeLevel === "high" && <VolumeHighIcon />}
-
-                  {volumeLevel === "muted" && <VolumeMutedIcon />}
-
+                  {renderVolumeIcon()}  
                 </button>
-                {/* Add a div tag with volume-slider-wrapper class if you want the slider to be vertical */}
-                <input className="volume-slider" onInput={handleVolumeSlider} type="range" min="0" max="1" value={volume} step="any"  aria-orientation='vertical' />
-              
+                <input 
+                  className="volume-slider" 
+                  type="range" 
+                  min="0" 
+                  max="1" 
+                  value={volume} 
+                  step="any"
+                  onChange={handleVolumeChange}
+                  aria-orientation='vertical' 
+                />
               </div>
 
-
               <div className="duration-container">
-                {currentFileTitle &&                 
-                  (
-                    <>
-                  <div className="current-time">{currentTimeElement}</div>
-                  /
-                  <div className="total-time">{totalTimeElement}</div>
+                {currentFileTitle && (
+                  <>
+                    <div className="current-time">{currentTimeElement}</div>
+                    /
+                    <div className="total-time">{totalTimeElement}</div>
                   </>
                 )}
               </div>
-                
             </div>
+            
             <div className="flex flex-col place-items-center items-center">
               <div className='flex gap-4'>
-                <button className='flex justify-center place-items-center'
-                  onClick={handleBackwardSkipTime} onDoubleClick={handleForwardSkip}
+                <button 
+                  className='flex justify-center place-items-center'
+                  onClick={handleBackwardSkipTime} 
+                  onDoubleClick={handleForwardSkip}
                 >
-
-                  <RxDoubleArrowLeft className={`text-[20px] ${isClicked?'text-red-600':''}`} />
+                  <RxDoubleArrowLeft className={`text-[20px]`} />
                   <span className='text-[10px]'>{currentSkipTime}</span>
                 </button>
-                <button className='flex justify-center place-items-center'
-                  onClick={handleForwardSkipTime} onDoubleClick={handleForwardSkip}
+                
+                <button 
+                  className='flex justify-center place-items-center'
+                  onClick={handleForwardSkipTime} 
+                  onDoubleClick={handleForwardSkip}
                 >
-                  <span className='text-[10px] '>{currentSkipTime}</span>
-                  <RxDoubleArrowRight className={`text-[20px] ${isClicked?'text-red-600':''}`} />
+                  <span className='text-[10px]'>{currentSkipTime}</span>
+                  <RxDoubleArrowRight className={`text-[20px]`} />
                 </button>
 
                 {showSkipTime && (
-
-                  <Dropdown onCallback={(value: any) => selectSkipTiming(value)} />
-
+                  <Dropdown onCallback={selectSkipTiming} />
                 )}
               </div>
-               
             </div>
 
-            <div className='flex  gap-5'>
+            <div className='flex gap-5'>
               <div className='place-items-center flex'>
-                <button className="playback-reduce" id="playbackSpeedReduce" onClick={playbackSpeedReduce} >
+                <button className="playback-reduce" onClick={playbackSpeedReduce}>
                   <IoIosArrowBack className='text-2xl' />
                 </button>
 
-                <button className="speed-btn wide-btn" id="speedBtn" onClick={playbackSpeedNormal}>
+                <button className="speed-btn wide-btn" onClick={playbackSpeedNormal}>
                   {currentPlaySpeed}
                 </button>
 
-                <button className="playback-increase" id="playbackSpeedIncrease" onClick={playbackSpeedIncrease}>
+                <button className="playback-increase" onClick={playbackSpeedIncrease}>
                   <IoIosArrowForward className='text-2xl' />
                 </button>
               </div>
 
-              {/* <button className="captios-btn w-7">
-                <FaClosedCaptioning className='w-[100%] text-red-500  text-2xl' />
-              </button> */}
+              <button className="captions-btn w-7" onClick={toggleCaptions}>
+                <FaClosedCaptioning className={`w-[100%] text-2xl ${captionsVisible ? 'text-red-500' : 'text-white'}`} />
+              </button>
 
-              <button className="w-7 place-items-center mt-2">
-                <label className="switch">
-                  <input type="checkbox" checked={isAutoPlay}  className='w-20' onChange={handleAutoplay} name="subtitle" />
-                  <span className="slider round">
-                    <span className="icon"></span>
-                    </span>
-                </label>
+              <button className="settings-btn w-7" onClick={toggleSettings}>
+                <FaCog className='w-[100%] text-2xl' />
+              </button>
+
+              {showSettings && (
+                <PlaytimeSettings 
+                  onAutoplayChange={handleAutoplay} 
+                  isAutoplay={isAutoPlay}
+                  playbackSpeed={currentPlaySpeed}
+                  onPlaybackSpeedChange={(speed: string) => {
+                    if (videoRef.current) {
+                      videoRef.current.playbackRate = parseFloat(speed);
+                      setCurrentPlaySpeed(`${speed}x`);
+                    }
+                  }}
+                />
+              )}
+
+              <button className="theater-btn w-7" onClick={toggleTheaterMode}>
+                {isTheatherMode ? <TheaterIcon /> : <TheaterIcon />}
               </button>
 
               <button className="mini-player-btn w-7" onClick={toggleMiniPlayerMode}>
-                <MiniPlayer  />
+                <MiniPlayerIcon />
               </button>
-              <button className="theater-btn w-7" onClick={toggleTheaterMode}>
 
-                {!isTheatherMode && <TheatherIcon />}
-
-                {isTheatherMode && <TheatherMiniIcon />}
+              <button className="full-screen-btn w-7" onClick={toggleFullScreenMode}>
+                {isFullscreen ? <BsFullscreenExit className='text-2xl' /> : <BsFullscreen className='text-2xl' />}
               </button>
-              <button className="fullscreen-btn w-7" onClick={toggleFullScreenMode}>
-
-                {!isFullscreen && <BsFullscreen />}
-                {isFullscreen && <BsFullscreenExit />}
-
-              </button>
-              <button onClick={toggleSettings}><FaCog className='w-8'/></button>
-                {showSettings && <PlaytimeSettings/>}
             </div>
           </div>
-            <div className='text-xs text-center'>{currentFileTitle}</div>
         </div>
 
+        <video
+          ref={videoRef}
+          className="video"
+          src={playtime}
+          onClick={togglePauseAndPlay}
+          onTimeUpdate={() => updateTimelineProgress(
+            videoRef.current, 
+            timelineContainerRef.current
+          )}
+          onLoadedMetadata={() => {
+            if (videoRef.current) {
+              setTotalTimeElement(formatDuration(videoRef.current.duration));
+            }
+          }}
+        >
+          <track
+            kind="captions"
+            src=""
+            label="English"
+            srcLang="en"
+            default={captionsVisible}
+          />
+        </video>
 
-        <video className='w-[100%] h-[90vh] bg-black' muted={isMuted} ref={videoRef} data-file-name={playtime} src={playtime}></video>
-
-        {/* <audio id="audioPlayer" controls></audio> */}
-
+        <audio id="audioPlayer" style={{ display: 'none' }} />
       </div>
-      <div className={`directory px-2 ${isTheatherMode ? '' : 'w-[30%]'} mb-5`}>
-        <div className="select-fles flex flex-row gap-3 my-2">
-          <div className="button bg-[#1C274C] hover:bg-black text-white px-3 py-1 cursor-pointer rounded">
-            <label htmlFor="fileDirInput" className='cursor-pointer'>Select folder</label>
-            <input 
-              type="file" 
-              hidden 
-              id="fileDirInput"
-              // @ts-ignore - webkitdirectory isn't in the standard types
-              webkitdirectory="true"
-              // @ts-ignore - directory isn't in the standard types
-              directory="true"
-              onChange={handleFileDirChange}
-            />
-          </div>
-          <div className="button bg-[#1C274C] hover:bg-black  text-white px-3 py-1 rounded">
-            <label htmlFor="fileInput" className='cursor-pointer'>Select files</label>
-            <input type="file" hidden id="fileInput" onChange={handleFileChange} multiple />
-          </div>
-        </div>
-        <div className='pl-4'>
-          <ul id="fileList">
-              {files.map((file) => (
-                  <li
-                    key={file.url}
-                    className={`cursor-pointer hover:text-blue-500 flex items-center place-items-middle ${
-                        currentlyPlayingFile === file.url ? 'text-blue-600 font-bold' : ''
-                    }`}
-                    onClick={() => {
-                        setCurrentlyPlayingFile(file.url);
-                        playFile(file);
-                    }}
-                  >
+
+      
+        {/* <div className="w-[25%] h-full bg-gray-700 p-4 overflow-y-auto"> */}
+        <div className={`directory px-2 ${isTheatherMode ? 'grid-cols-2' : 'grid-cols-1'} grid overflow-y-auto`}>
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-gray-800 font-bold flex place-items-center gap-1 cursor-pointer" title={folderName || 'Playlist'}> 
+                <IoFolder className='text-lg' />
+                {folderName || 'Playlist'}
+              </h3>
+              <span className="text-gray-400 text-sm">{fileCount} items</span>
+            </div>
+
+            <div className="space-y-2">
+              {files.map((file: MediaFile, index: number) => (
+                <div
+                  key={index}
+                  className={`p-2 rounded cursor-pointer ${currentlyPlayingFile === file.url ? 'bg-blue-600' : 'bg-gray-800 hover:bg-gray-700'}`}
+                  onClick={() => playFile(file)}
+                >
+                  <div className='flex'>
+                    <div className='pt-1'>
                       {currentlyPlayingFile === file.url && (
-                        
-                        isPlaying && <button><IoPlay className='text-lg' /></button>          
+                                
+                        isPlaying && <button><IoPlay className='text-lg text-white' /></button>          
                         
                       )}
-                      {file.relativePath || file.name}
-                  </li>
+                    </div>
+                    <div className='truncate' title={file.name}>
+                      <p className="text-white truncate">{file.name}</p>
+                      <p className="text-gray-400 text-xs">{file.type}</p>
+                    </div>
+                  </div>
+                </div>
               ))}
-          </ul>
-        </div>
-      </div>
+            </div>
 
+            <div className="mt-4 space-y-2">
+              <label className="block">
+                <span className="text-white text-sm">Select Files</span>
+                <input
+                  type="file"
+                  className="block w-full text-sm text-gray-400
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-blue-500 file:text-white
+                    hover:file:bg-blue-600"
+                  onChange={handleFileChange}
+                  multiple
+                  accept=".mp4,.avi,.mkv,.mov,.wmv,.mp3,.wav,.aac,.flac,.ogg"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-white text-sm">Select Folder</span>
+                <input
+                  type="file"
+                  className="block w-full text-sm text-gray-400
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-green-500 file:text-white
+                    hover:file:bg-green-600"
+                  onChange={handleFileDirChange}
+                  {...({
+                    webkitdirectory: "true",
+                    mozdirectory: "true",
+                    directory: "true"
+                  } as any)}
+                  multiple
+                />
+              </label>
+
+              <button
+                className="w-full py-2 px-4 bg-purple-600 text-white rounded hover:bg-purple-700"
+                onClick={handleCreatePlaylist}
+              >
+                Create Playlist
+              </button>
+            </div>
+          </div>
+
+          <div>
+            {currentFileTitle?( 
+              <div className='px-5'>
+                <div className='flex place-items-center gap-3 text-gray-500 hover:text-blue-500 cursor-pointer'>
+                  <div>
+                  <svg fill="#000000" width="15px" height="15px" viewBox="0 0 1920 1920" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <g fill-rule="evenodd"> <path d="M0 176.142 176.13.012l960.12 960.119L176.13 1920 0 1743.87l783.864-783.739L0 176.142Z"></path> <path d="M784 176.142 960.13.012l960.12 960.119L960.13 1920 784 1743.87l783.86-783.739L784 176.142Z"></path> </g> </g></svg>
+                  </div>
+                  <div className='font-bold '>{currentFileTitle }</div>
+                </div>
+                <div className='px-7 py-4'>
+                  Currently playing video transcript will be displayed here.
+                </div>
+              </div>
+              ):''
+            }
+          </div>
+        </div>
+      
     </div>
   );
 };
